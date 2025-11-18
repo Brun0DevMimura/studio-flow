@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 
 const Dashboard = () => {
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
