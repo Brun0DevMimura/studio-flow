@@ -6,6 +6,10 @@ import { useNavigate } from "react-router-dom";
 const Index = () => {
   const navigate = useNavigate();
 
+  const handleGetStarted = () => {
+    navigate("/auth");
+  };
+
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -26,7 +30,7 @@ const Index = () => {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 animate-slide-up" style={{ animationDelay: "200ms" }}>
-              <Button size="lg" className="bg-white text-primary hover:bg-white/90 shadow-xl" onClick={() => navigate("/dashboard")}>
+              <Button size="lg" className="bg-white text-primary hover:bg-white/90 shadow-xl" onClick={handleGetStarted}>
                 Começar agora
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
