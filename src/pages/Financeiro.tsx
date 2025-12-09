@@ -1,17 +1,19 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { 
   TrendingUp, 
-  DollarSign, 
   CreditCard, 
   AlertCircle, 
   CheckCircle, 
   Clock,
   Plus,
   Download,
-  Search
+  Search,
+  Loader2
 } from "lucide-react";
 import {
   Table,
@@ -21,8 +23,54 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { supabase } from "@/integrations/supabase/client";
+import { NovaCobrancaDialog } from "@/components/financeiro/NovaCobrancaDialog";
+import { DetalhesCobrancaDialog } from "@/components/financeiro/DetalhesCobrancaDialog";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 const Financeiro = () => {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [novaCobrancaOpen, setNovaCobrancaOpen] = useState(false);
+  const [detalhesOpen, setDetalhesOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+
+  const { data: invoices = [], isLoading, refetch } = useQuery({
+    queryKey: ["invoices"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select(`
+          *,
+          patient:patients(full_name, phone, email),
+          subscription:subscriptions(subscription_plans(name))
+        `)
+        .order("due_date", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const filteredInvoices = invoices.filter((invoice) =>
+    invoice.patient?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const stats = {
+    total: invoices.reduce((acc, inv) => acc + Number(inv.amount), 0),
+    received: invoices.filter(inv => inv.payment_status === "pago").reduce((acc, inv) => acc + Number(inv.amount), 0),
+    pending: invoices.filter(inv => inv.payment_status === "pendente").reduce((acc, inv) => acc + Number(inv.amount), 0),
+    overdue: invoices.filter(inv => inv.payment_status === "atrasado").reduce((acc, inv) => acc + Number(inv.amount), 0),
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+  };
+
+  const handleViewDetails = (invoice: any) => {
+    setSelectedInvoice(invoice);
+    setDetalhesOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -37,7 +85,7 @@ const Financeiro = () => {
               <Download className="mr-2 h-4 w-4" />
               Exportar
             </Button>
-            <Button className="bg-gradient-primary">
+            <Button className="bg-gradient-primary" onClick={() => setNovaCobrancaOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Nova cobrança
             </Button>
@@ -48,33 +96,25 @@ const Financeiro = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <RevenueCard
             title="Receita Total"
-            value="R$ 24.500"
-            change="+15%"
-            trend="up"
+            value={formatCurrency(stats.total)}
             icon={<TrendingUp className="h-5 w-5" />}
             color="primary"
           />
           <RevenueCard
             title="Recebido"
-            value="R$ 21.300"
-            change="+8%"
-            trend="up"
+            value={formatCurrency(stats.received)}
             icon={<CheckCircle className="h-5 w-5" />}
             color="secondary"
           />
           <RevenueCard
             title="Pendente"
-            value="R$ 3.200"
-            change="-5%"
-            trend="down"
+            value={formatCurrency(stats.pending)}
             icon={<Clock className="h-5 w-5" />}
             color="accent"
           />
           <RevenueCard
             title="Em Atraso"
-            value="R$ 1.850"
-            change="+2%"
-            trend="up"
+            value={formatCurrency(stats.overdue)}
             icon={<AlertCircle className="h-5 w-5" />}
             color="destructive"
           />
@@ -103,80 +143,74 @@ const Financeiro = () => {
           </Card>
         </div>
 
-        {/* Subscriptions Table */}
+        {/* Invoices Table */}
         <Card className="border-border bg-card">
           <div className="p-6 border-b border-border">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-card-foreground">Assinaturas Ativas</h3>
+              <h3 className="text-lg font-semibold text-card-foreground">Cobranças</h3>
               <div className="flex items-center gap-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Buscar..." className="pl-10 w-64" />
+                  <Input 
+                    placeholder="Buscar paciente..." 
+                    className="pl-10 w-64"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
                 </div>
               </div>
             </div>
           </div>
           
           <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Paciente</TableHead>
-                  <TableHead>Plano</TableHead>
-                  <TableHead>Valor</TableHead>
-                  <TableHead>Próximo Pagamento</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <SubscriptionRow
-                  patient="Ana Silva"
-                  plan="Pilates Mensal"
-                  value="R$ 350,00"
-                  nextPayment="25/11/2025"
-                  status="active"
-                />
-                <SubscriptionRow
-                  patient="Carlos Oliveira"
-                  plan="Fisioterapia Semanal"
-                  value="R$ 180,00"
-                  nextPayment="22/11/2025"
-                  status="active"
-                />
-                <SubscriptionRow
-                  patient="Beatriz Souza"
-                  plan="Pilates Mensal"
-                  value="R$ 350,00"
-                  nextPayment="28/11/2025"
-                  status="active"
-                />
-                <SubscriptionRow
-                  patient="Pedro Lima"
-                  plan="Avaliação"
-                  value="R$ 120,00"
-                  nextPayment="20/11/2025"
-                  status="pending"
-                />
-                <SubscriptionRow
-                  patient="Julia Ferreira"
-                  plan="Pilates Mensal"
-                  value="R$ 350,00"
-                  nextPayment="15/11/2025"
-                  status="overdue"
-                />
-                <SubscriptionRow
-                  patient="Lucas Costa"
-                  plan="Fisioterapia Semanal"
-                  value="R$ 180,00"
-                  nextPayment="26/11/2025"
-                  status="active"
-                />
-              </TableBody>
-            </Table>
+            {isLoading ? (
+              <div className="flex items-center justify-center p-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredInvoices.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-12 text-muted-foreground">
+                <CreditCard className="h-12 w-12 mb-2" />
+                <p>Nenhuma cobrança encontrada</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Paciente</TableHead>
+                    <TableHead>Plano</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead>Vencimento</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredInvoices.map((invoice) => (
+                    <InvoiceRow 
+                      key={invoice.id} 
+                      invoice={invoice} 
+                      onViewDetails={() => handleViewDetails(invoice)}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
         </Card>
       </div>
+
+      <NovaCobrancaDialog 
+        open={novaCobrancaOpen} 
+        onOpenChange={setNovaCobrancaOpen}
+        onSuccess={refetch}
+      />
+
+      <DetalhesCobrancaDialog
+        open={detalhesOpen}
+        onOpenChange={setDetalhesOpen}
+        invoice={selectedInvoice}
+        onUpdate={refetch}
+      />
     </div>
   );
 };
@@ -184,13 +218,11 @@ const Financeiro = () => {
 interface RevenueCardProps {
   title: string;
   value: string;
-  change: string;
-  trend: "up" | "down";
   icon: React.ReactNode;
   color: "primary" | "secondary" | "accent" | "destructive";
 }
 
-const RevenueCard = ({ title, value, change, trend, icon, color }: RevenueCardProps) => {
+const RevenueCard = ({ title, value, icon, color }: RevenueCardProps) => {
   const colorClasses = {
     primary: "bg-primary/10 text-primary",
     secondary: "bg-secondary/10 text-secondary",
@@ -203,13 +235,7 @@ const RevenueCard = ({ title, value, change, trend, icon, color }: RevenueCardPr
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm text-muted-foreground mb-1">{title}</p>
-          <p className="text-3xl font-bold text-card-foreground mb-1">{value}</p>
-          <div className="flex items-center gap-1">
-            <span className={`text-xs font-medium ${trend === "up" ? "text-secondary" : "text-destructive"}`}>
-              {change}
-            </span>
-            <span className="text-xs text-muted-foreground">vs mês anterior</span>
-          </div>
+          <p className="text-2xl font-bold text-card-foreground">{value}</p>
         </div>
         <div className={`rounded-lg p-3 ${colorClasses[color]}`}>
           {icon}
@@ -219,47 +245,42 @@ const RevenueCard = ({ title, value, change, trend, icon, color }: RevenueCardPr
   );
 };
 
-interface SubscriptionRowProps {
-  patient: string;
-  plan: string;
-  value: string;
-  nextPayment: string;
-  status: "active" | "pending" | "overdue";
+interface InvoiceRowProps {
+  invoice: any;
+  onViewDetails: () => void;
 }
 
-const SubscriptionRow = ({ patient, plan, value, nextPayment, status }: SubscriptionRowProps) => {
-  const statusConfig = {
-    active: {
-      label: "Ativo",
-      className: "bg-secondary/10 text-secondary",
-    },
-    pending: {
-      label: "Pendente",
-      className: "bg-accent/10 text-accent",
-    },
-    overdue: {
-      label: "Vencido",
-      className: "bg-destructive/10 text-destructive",
-    },
+const statusConfig = {
+  pendente: { label: "Pendente", className: "bg-accent/10 text-accent" },
+  pago: { label: "Pago", className: "bg-secondary/10 text-secondary" },
+  atrasado: { label: "Atrasado", className: "bg-destructive/10 text-destructive" },
+  cancelado: { label: "Cancelado", className: "bg-muted text-muted-foreground" },
+};
+
+const InvoiceRow = ({ invoice, onViewDetails }: InvoiceRowProps) => {
+  const status = statusConfig[invoice.payment_status as keyof typeof statusConfig] || statusConfig.pendente;
+
+  const formatDate = (dateStr: string) => {
+    return format(new Date(dateStr), "dd/MM/yyyy", { locale: ptBR });
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
   };
 
   return (
     <TableRow>
-      <TableCell className="font-medium">{patient}</TableCell>
-      <TableCell>{plan}</TableCell>
-      <TableCell className="font-semibold text-primary">{value}</TableCell>
-      <TableCell>{nextPayment}</TableCell>
+      <TableCell className="font-medium">{invoice.patient?.full_name || "-"}</TableCell>
+      <TableCell>{invoice.subscription?.subscription_plans?.name || "Avulso"}</TableCell>
+      <TableCell className="font-semibold text-primary">{formatCurrency(invoice.amount)}</TableCell>
+      <TableCell>{formatDate(invoice.due_date)}</TableCell>
       <TableCell>
-        <Badge className={statusConfig[status].className}>
-          {statusConfig[status].label}
-        </Badge>
+        <Badge className={status.className}>{status.label}</Badge>
       </TableCell>
       <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm">
-            Ver detalhes
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" onClick={onViewDetails}>
+          Ver detalhes
+        </Button>
       </TableCell>
     </TableRow>
   );
